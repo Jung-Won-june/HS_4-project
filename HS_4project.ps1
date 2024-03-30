@@ -1,4 +1,5 @@
-﻿$currentUserName = $env:USERNAME
+#Sysmon설치 전 기본환경변수 가져오
+$currentUserName = $env:USERNAME
 Write-Host "current user :$currentUserName"
 
 # desktop path
@@ -11,6 +12,7 @@ $desktopPath = Join-Path $env:USERPROFILE 'Desktop'
 Write-Host "desktop path: $desktopPath"
 $ThisDesktop = $desktopPath
 
+#사용자 암호 설정
 function Test-PasswordComplexity {
     param (
         [string]$Password
@@ -42,6 +44,7 @@ net accounts /maxpwage:90
 net accounts /minpwage:1
 net accounts /uniquepw:24
 
+#파일 시스템 FAT32일 경우 NTFS포멧으로 설정
 # Step 1: NTFS CHECK
 $diskVolumes = Get-WmiObject -Class Win32_Volume -Filter "DriveType = 3"
 $nonNTFSDrives = @()
@@ -50,14 +53,13 @@ foreach ($volume in $diskVolumes) {
         $nonNTFSDrives += $volume.DriveLetter
     }
 }
-
-# Step 2: NTFS CHANGE
+# Step 2&3: Convert non-NTFS drives to NTFS
 foreach ($drive in $nonNTFSDrives) {
     $cmdCommand = "cmd /c convert $drive /fs:ntfs"
     Invoke-Expression -Command $cmdCommand
 }
 
-#?곸슜 硫붿떊????ъ슜 湲덉?
+#Windows Messenger(MSN, .NET 메신저 등)와 같은 상용 메신저 사용 금지
 $registryPath="HKLM:\SOFTWARE\Policies\Microsoft\Messenger\Client"
 $registryName="PreventRun"
 $registryValue=1
@@ -66,42 +68,43 @@ if(Test-Path $registryPath){
 		Get-ItemProperty -Path $registryPath -Name $registryName
 }
 else{
-		Write-Host "Messenger ?덉??ㅽ듃由?寃쎈줈媛 議댁옱?섏? ?딆븘 ?꾨Т ?묒뾽???섑뻾?섏? ?딆뒿?덈떎."
+		Write-Host "Messenger 레지스트리 경로가 존재하지 않습니다."
 }
 
+#화면보호기 대기 시간 설정 및 재시작 시 암호 보호 설
 $timeoutInSeconds = 600
 New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -Value 1 -PropertyType DWord -Force
 New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaveTimeOut -Value $timeoutInSeconds -PropertyType DWord -Force
 New-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name ScreenSaverIsSecure -Value 1 -PropertyType DWord -Force
 
-#
+#브라우저 종료 시 임시 인터넷 파일 폴더의 내용 삭제
 $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Cache"
 $regName = "Persistent"
 $regValue = 0
 New-ItemProperty -Path $regPath -Name $regName -Value $regValue -PropertyType DWord -Force
 
-#WINDOWS DEFENDER
+#WINDOWS DEFENDER 실시간 감시 기능 활성화
 Set-MpPreference -DisableRealtimeMonitoring $false
 
-#
+#OS에서 제공하는 침입 차단 기능 활성화
 $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile"
 $regName = "EnableFirewall"
 $regValue = 1
 New-ItemProperty -Path $regPath -Name $regName -Value $regValue -PropertyType DWord -Force
 
-#
+#이동식 미디어의 자동실행 방지
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer"
 $regName = "NoDriveTypeAutoRun"
 $regValue = 255
 New-ItemProperty -Path $regPath -Name $regName -Value $regValue -PropertyType DWord -Force
 
-
+#윈도우 복구 콘솔 자동 로그인 설정 금지
 $regPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Setup\RecoveryConsole"
 $regName = "SecurityLevel"
 $regValue = 0
 New-ItemProperty -Path $regPath -Name $regName -Value $regValue -PropertyType DWord -Force
 
-#NOT USE SERVICE
+#과기정통부, KISA기반 주요정보통신기관의 불필요 서비스 비활성화
 Stop-Service -Name "ClipSVC" -Force
 Stop-Service -Name "CryptSvc" -Force
 Stop-Service -Name "TrkWks" -Force
@@ -113,26 +116,29 @@ Stop-Service -Name "TermService" -Force
 Stop-Service -Name "DiagTrack" -Force
 Stop-Service -Name "lfsvc" -Force
 Stop-Service -Name "TabletInputService" -Force
-reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f
-netsh advfirewall firewall set rule group="?먭꺽 ?곗뒪?ы넲" new enable=No
 
+#원격 데스크톱 기능 비활성화
+reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f
+netsh advfirewall firewall set rule group="원격 데스크톱" new enable=No
+
+#공유파일 삭제
 #Delete Shared Folder
 $shareFolders = Get-SmbShare
 foreach($folder in $shareFolders){
   $folderName = $folder.Name
   net share $folderName /delete
 }
-#AutoShareWks(AutoShareServer) 
+#시스템 재부팅 시 기본 공유 폴더가 자동 공유 방지
 $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters"
-$registryName = "AutoShareWks"
+$registryName = "AutoShareServer"
 $registryValue = 0
 New-ItemProperty -Path $registryPath -Name $registryName -Value $registryValue -PropertyType DWord -Force
 Get-ItemProperty -Path $registryPath -Name $registryName
-
 #Disable SMB
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "SMB1" -Type DWORD -Value 0 -Force
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "SMB2" -Type DWORD -Value 0 -Force
 
+#30일마다 임시파일 삭제
 $Path = "C:\Users\$currentUserName\AppData\Local\Temp"
 $Daysback = "-30"
 $CurrentDate = Get-Date
@@ -148,48 +154,43 @@ Set-ItemProperty -Path $logpath -Name 'MaxSize' -Value 21474836 -Force
 Set-ItemProperty -Path $logpath -Name 'MaxSize' -Value 21474836 -Force
 Set-ItemProperty -Path $logpath -Name 'MaxSize' -Value 21474836 -Force
 
-#turn on module logging
+#turn on module logging(powershell)
 New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\" -Name "ModuleLogging" -Force
 New-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging' -Name 'EnableModuleLogging' -Value 1 -Type DWORD -Force
 New-Item -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging' -Name 'ModuleNames' -Force
 New-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames' -Name '*' -Value '*' -Type String -Force
-
 #Scriptblock logging
 New-Item -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell' -Name 'ScriptBlockLogging' -Force
 Set-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging' -Name 'EnableScriptBlockLogging' -Value 1 -Type DWORD
-
-
 #powershell transcription
 New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\" -Name "Transcription" -Force
 Set-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'EnableTranscripting' -Value 1 -Type DWORD -Force
 Set-ItemProperty -Path 'HKLM:\Software\Policies\Microsoft\Windows\PowerShell\Transcription' -Name 'OutputDirectory' -Value $outputDirectory -Type String -Force
 
+#SYSMON 설치 후 활성화
 $currentUserName = $env:USERNAME
 Write-Host "current user :$currentUserName"
-
 # desktop path
 $outputDirectory = "C:\Users\$currentUserName\Desktop"
 Write-Host "outputDirectory: $outputDirectory"
-
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Write-Host "Downloading Sysmon.zip ..."
 Invoke-WebRequest -Uri "https://download.sysinternals.com/files/SysinternalsSuite.zip" -OutFile "$outputDirectory\\sysmon.zip"
-
 Write-Host "Unzip Sysmon..."
 Expand-Archive -Path "$outputDirectory\sysmon.zip" -DestinationPath "$outputDirectory\sysmon" -Force
-
 Write-Host "INSTALLING SYSMON"
 $sysmonExePath = Join-Path "$outputDirectory\sysmon" "sysmon64.exe"
 Write-Host "$sysmonExePath"
 Start-Process -FilePath $sysmonExePath -ArgumentList '-i', '-h', 'sha1', '-n', '-accepteula'
 
+#윈도우 업데이트 실행
 Write-Host "Downloading Security Update..."
 $url = "https://catalog.s.download.windowsupdate.com/c/msdownload/update/software/secu/2024/03/windows10.0-kb5035845-x64_b4c28c9c57c35bac9226cde51685e41c281e40eb.msu"
 $downloadPath = "$outputDirectory\SecurityUpdate.msu"
 Invoke-WebRequest -Uri $url -OutFile $downloadPath
 Start-Process -FilePath $outputDirectory\SecurityUpdate.msu
 
-#로그 경로
+#주요 이벤트 1149 Alert
 $logName="Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational"
 $eventID=1149
 #경로에서 찾아볼 최신 이벤트 개수
